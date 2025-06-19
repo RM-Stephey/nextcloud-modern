@@ -1,0 +1,189 @@
+# StepheyBot Music Repository (separate git repo)
+music-recommender/
+
+# Environment and sensitive files
+.env
+.env.*
+*.env
+.environment
+
+# SSL Certificates and keys
+acme.json
+*.pem
+*.key
+*.crt
+*.cert
+*.p12
+*.pfx
+
+# Docker volumes and data
+/data/
+/volumes/
+docker-compose.override.yml
+docker-compose.*.yml
+!docker-compose.yml
+
+# Backups
+/backups/
+*.backup
+*.bak
+*.old
+*.orig
+
+# Logs
+*.log
+/logs/
+*.log.*
+/var/log/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# Cache directories
+.cache/
+cache/
+tmp/
+temp/
+.tmp/
+
+# Nextcloud specific
+/nextcloud/data/
+/nextcloud/config/config.php
+/nextcloud/apps/
+/nextcloud/themes/
+
+# Generated configuration files
+config/local.*
+config/*.local.*
+*local.conf
+*local.config
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# Editor and IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+
+# Git files
+*.orig
+*.rej
+
+# Compressed files
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Runtime files
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# Dependency directories
+node_modules/
+bower_components/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache (https://parceljs.org/)
+.parcel-cache
+
+# Next.js build output
+.next
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Storybook build outputs
+.out
+.storybook-out
+
+# Temporary folders
+tmp/
+temp/
+
+# Local configuration override files
+docker-compose.override.yml
+docker-compose.local.yml
+
+# Traefik
+/traefik/
+
+# Let's Encrypt
+/letsencrypt/
+
+# Application specific data
+/uploads/
+/downloads/
+/media/
+/music/
+/movies/
+/tv/
+/books/
+
+# Monitoring and metrics
+/grafana/data/
+/prometheus/data/
+/influxdb/data/
+
+# Redis data
+/redis/data/
+
+# PostgreSQL data
+/postgres/data/
+/postgresql/data/
+
+# MariaDB/MySQL data
+/mariadb/data/
+/mysql/data/
+
+# Application logs and data
+/app/logs/
+/app/data/
+/app/cache/
+/app/tmp/

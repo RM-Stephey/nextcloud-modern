@@ -1,0 +1,696 @@
+services:
+    # PostgreSQL Database - Optimized for high performance
+    db:
+        image: postgres:16-alpine
+        container_name: nextcloud_db
+        restart: unless-stopped
+        environment:
+            POSTGRES_DB: nextcloud
+            POSTGRES_USER: nextcloud
+            POSTGRES_PASSWORD: ${DB_PASSWORD}
+            POSTGRES_INITDB_ARGS: "--data-checksums"
+        env_file:
+            - .env
+        volumes:
+            - db_data:/var/lib/postgresql/data
+        command: |
+            postgres
+            -c shared_buffers=4GB
+            -c effective_cache_size=12GB
+            -c maintenance_work_mem=1GB
+            -c checkpoint_completion_target=0.9
+            -c wal_buffers=16MB
+            -c default_statistics_target=100
+            -c random_page_cost=1.1
+            -c effective_io_concurrency=200
+            -c work_mem=128MB
+            -c min_wal_size=1GB
+            -c max_wal_size=4GB
+            -c max_worker_processes=8
+            -c max_parallel_workers_per_gather=4
+            -c max_parallel_workers=8
+        networks:
+            - nextcloud_net
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U nextcloud"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
+    # Redis for caching and sessions
+    redis:
+        image: redis:7-alpine
+        container_name: nextcloud_redis
+        restart: unless-stopped
+        command: >
+            redis-server
+            --requirepass ${REDIS_PASSWORD}
+            --maxmemory 2gb
+            --maxmemory-policy allkeys-lru
+            --save 60 1000
+            --save 300 100
+            --save 900 10
+        volumes:
+            - redis_data:/data
+        networks:
+            - nextcloud_net
+        env_file:
+            - .env
+        healthcheck:
+            test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
+    # Nextcloud with PHP-FPM for better performance
+    nextcloud:
+        image: nextcloud:30-fpm
+        container_name: nextcloud_app
+        restart: unless-stopped
+        depends_on:
+            db:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        environment:
+            # Database
+            POSTGRES_HOST: db
+            POSTGRES_DB: nextcloud
+            POSTGRES_USER: nextcloud
+            POSTGRES_PASSWORD: ${DB_PASSWORD}
+
+            # Redis
+            REDIS_HOST: redis
+            REDIS_HOST_PASSWORD: ${REDIS_PASSWORD}
+
+            # Admin
+            NEXTCLOUD_ADMIN_USER: ${ADMIN_USER}
+            NEXTCLOUD_ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+
+            # Performance
+            PHP_MEMORY_LIMIT: 4G
+            PHP_UPLOAD_LIMIT: 16G
+            PHP_MAX_EXECUTION_TIME: 3600
+            PHP_MAX_INPUT_TIME: 3600
+            PHP_OPCACHE_MEMORY_CONSUMPTION: 512
+
+            # Trusted domains
+            NEXTCLOUD_TRUSTED_DOMAINS: ${TRUSTED_DOMAINS}
+            NEXTCLOUD_TRUSTED_PROXIES: "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 fd7a:115c:a1e0::/48 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22"
+            OVERWRITEPROTOCOL: https
+            OVERWRITECLIURL: https://cloud.stepheybot.dev
+            OVERWRITEHOST: cloud.stepheybot.dev
+
+            # Object storage (optional)
+            OBJECTSTORE_S3_BUCKET: ${S3_BUCKET:-}
+            OBJECTSTORE_S3_KEY: ${S3_KEY:-}
+            OBJECTSTORE_S3_SECRET: ${S3_SECRET:-}
+            OBJECTSTORE_S3_REGION: ${S3_REGION:-}
+        volumes:
+            - nextcloud_data:/var/www/html
+            - ${DATA_DIR}:/var/www/html/data
+            - ${MEDIA_DIR:-/dev/null}:/media:ro
+            - ./config/zz-opcache-custom.ini:/usr/local/etc/php/conf.d/zz-opcache-custom.ini:ro
+        networks:
+            - nextcloud_net
+        # Add at the end of your docker-compose file:
+        env_file:
+            - .env
+        healthcheck:
+            test: ["CMD", "php", "-f", "/var/www/html/cron.php"]
+            interval: 5m
+            timeout: 30s
+            retries: 3
+
+    # Nginx for serving static files and PHP-FPM proxy
+    web:
+        image: nginx:alpine
+        container_name: nextcloud_web
+        restart: unless-stopped
+        depends_on:
+            - nextcloud
+        volumes:
+            - ./nginx.conf:/etc/nginx/nginx.conf:ro
+            - nextcloud_data:/var/www/html:ro
+        networks:
+            - nextcloud_net
+            - proxy
+        ports:
+            - "9080:80"
+
+    # Cron jobs
+    cron:
+        image: nextcloud:30-fpm
+        container_name: nextcloud_cron
+        restart: unless-stopped
+        depends_on:
+            - nextcloud
+        environment:
+            PHP_OPCACHE_MEMORY_CONSUMPTION: 512
+        volumes:
+            - nextcloud_data:/var/www/html
+            - ${DATA_DIR}:/var/www/html/data
+            - ./config/zz-opcache-custom.ini:/usr/local/etc/php/conf.d/zz-opcache-custom.ini:ro
+        entrypoint: /cron.sh
+        networks:
+            - nextcloud_net
+
+    # Imaginary for high-performance image processing
+    imaginary:
+        image: h2non/imaginary:latest
+        container_name: nextcloud_imaginary
+        restart: unless-stopped
+        environment:
+            PORT: 8088
+            IMAGINARY_SECRET: ${IMAGINARY_SECRET}
+            IMAGINARY_CONCURRENCY: 10
+            IMAGINARY_ENABLE_URL_SOURCE: "false"
+            IMAGINARY_ALLOWED_ORIGINS: ${PRIMARY_DOMAIN}
+        env_file:
+            - .env
+        networks:
+            - nextcloud_net
+        deploy:
+            resources:
+                limits:
+                    cpus: "2"
+                    memory: 2G
+                reservations:
+                    devices:
+                        - driver: nvidia
+                          count: 1
+                          capabilities: [gpu]
+
+    onlyoffice:
+        image: onlyoffice/documentserver:latest
+        container_name: nextcloud_onlyoffice
+        restart: unless-stopped
+        environment:
+            - JWT_SECRET=${ONLYOFFICE_SECRET}
+        volumes:
+            - onlyoffice_data:/var/www/onlyoffice/Data
+            - onlyoffice_log:/var/log/onlyoffice
+        networks:
+            - nextcloud_net
+        ports:
+            - "8081:80"
+
+    # Full-text search with Elasticsearch
+    elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+        container_name: nextcloud_elasticsearch
+        restart: unless-stopped
+        environment:
+            - discovery.type=single-node
+            - bootstrap.memory_lock=true
+            - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+            - xpack.security.enabled=false
+        ulimits:
+            memlock:
+                soft: -1
+                hard: -1
+        volumes:
+            - elasticsearch_data:/usr/share/elasticsearch/data
+        networks:
+            - nextcloud_net
+        deploy:
+            resources:
+                limits:
+                    cpus: "2"
+                    memory: 4G
+    dashy:
+        container_name: dashy
+        image: lissy93/dashy:latest
+        restart: unless-stopped
+        volumes:
+            - ./dashy-config/conf.yml:/app/public/conf.yml
+        networks:
+            - proxy
+            - nextcloud_net
+        environment:
+            - NODE_ENV=production
+
+    oauth2-proxy:
+        image: quay.io/oauth2-proxy/oauth2-proxy:v7.4.0
+        container_name: oauth2-proxy
+        restart: unless-stopped
+        depends_on:
+            redis:
+                condition: service_healthy
+        environment:
+            - OAUTH2_PROXY_PROVIDER=oidc
+            - OAUTH2_PROXY_CLIENT_ID=stepheybot-services
+            - OAUTH2_PROXY_CLIENT_SECRET=PNU9kEvkUroHNWI9P6V5lvoi6uK62znY
+            - OAUTH2_PROXY_REDIRECT_URL=https://dashboard.stepheybot.dev/oauth2/callback
+            - OAUTH2_PROXY_OIDC_ISSUER_URL=https://sso.axiomethica.io/realms/stepheybot
+            - OAUTH2_PROXY_COOKIE_SECRET=R425qyBFut33rWhQpC2R968dpDezrdl9
+            - OAUTH2_PROXY_COOKIE_SECURE=true
+            - OAUTH2_PROXY_COOKIE_DOMAIN=.stepheybot.dev
+            - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:4180
+            - OAUTH2_PROXY_EMAIL_DOMAINS=*
+            - OAUTH2_PROXY_REVERSE_PROXY=true
+            - OAUTH2_PROXY_SET_XAUTHREQUEST=true
+            - OAUTH2_PROXY_SKIP_PROVIDER_BUTTON=true
+            - OAUTH2_PROXY_PASS_USER_HEADERS=true
+            - OAUTH2_PROXY_COOKIE_REFRESH=1h
+            - OAUTH2_PROXY_WHITELIST_DOMAINS=.stepheybot.dev
+            - OAUTH2_PROXY_PASS_HOST_HEADER=true
+            - OAUTH2_PROXY_PASS_ACCESS_TOKEN=false
+            - OAUTH2_PROXY_SKIP_AUTH_STRIP_HEADERS=false
+            - OAUTH2_PROXY_PRESERVE_HOST=true
+            - OAUTH2_PROXY_UPSTREAMS=http://dashy:8080
+            # Use Redis for session storage to eliminate cookie fragmentation
+            - OAUTH2_PROXY_SESSION_STORE_TYPE=redis
+            - OAUTH2_PROXY_REDIS_CONNECTION_URL=redis://redis:6379
+            - OAUTH2_PROXY_REDIS_PASSWORD=${REDIS_PASSWORD}
+            - OAUTH2_PROXY_COOKIE_SAMESITE=lax
+            - OAUTH2_PROXY_SKIP_AUTH_REGEX=^/favicon\.ico$
+        ports:
+            - "4180:4180"
+        networks:
+            - proxy
+            - nextcloud_net
+
+        # Single OAuth2-Proxy can handle multiple services via VPS nginx routing
+        # No need for multiple instances - just route different domains to port 4180
+        # and configure different upstreams in OAuth2-Proxy based on Host header
+
+        # Preview generator with GPU support
+    preview_generator:
+        image: nextcloud:30-fpm
+        container_name: nextcloud_preview
+        restart: unless-stopped
+        depends_on:
+            - nextcloud
+        environment:
+            PHP_OPCACHE_MEMORY_CONSUMPTION: 512
+        volumes:
+            - nextcloud_data:/var/www/html
+            - ${DATA_DIR}:/var/www/html/data
+            - ./config/zz-opcache-custom.ini:/usr/local/etc/php/conf.d/zz-opcache-custom.ini:ro
+        entrypoint: |
+            bash -c 'while true; do
+              php /var/www/html/occ preview:pre-generate
+              sleep 900
+            done'
+        networks:
+            - nextcloud_net
+        deploy:
+            resources:
+                limits:
+                    cpus: "2"
+                    memory: 2G
+
+    # Backup service
+    backup:
+        image: offen/docker-volume-backup:latest
+        container_name: nextcloud_backup
+        restart: unless-stopped
+        environment:
+            BACKUP_CRON_EXPRESSION: "0 2 * * *"
+            BACKUP_FILENAME: "nextcloud-backup-%Y-%m-%d_%H-%M-%S.tar.gz"
+            BACKUP_RETENTION_DAYS: "7"
+            BACKUP_PRUNING_PREFIX: "nextcloud-backup-"
+        volumes:
+            - nextcloud_data:/backup/nextcloud_data:ro
+            - db_data:/backup/db_data:ro
+            - ${BACKUP_DIR}:/archive
+            - /var/run/docker.sock:/var/run/docker.sock:ro
+        networks:
+            - nextcloud_net
+
+    # StepheyBot Music Services
+    # Music streaming server
+    navidrome:
+        image: deluan/navidrome:latest
+        container_name: stepheybot_music_navidrome
+        restart: unless-stopped
+        environment:
+            ND_MUSICFOLDER: /music
+            ND_DATAFOLDER: /data
+            ND_SCANSCHEDULE: "@every 1h"
+            ND_LOGLEVEL: info
+            ND_SESSIONTIMEOUT: 24h
+            ND_BASEURL: "/music"
+            ND_ENABLESHARING: "true"
+            ND_ENABLESTARRATING: "true"
+            ND_ENABLEFAVOURITES: "true"
+            ND_ENABLEUSEREDITRULES: "true"
+            ND_AUTOIMPORTPLAYLISTS: "true"
+            ND_IMAGECACHESIZE: "1GB"
+            ND_TRANSCODINGCACHESIZE: "2GB"
+            ND_ENABLETRANSCODINGCONFIG: "true"
+            ND_ENABLEDOWNLOADS: "true"
+            ND_ADDRESS: "0.0.0.0"
+            ND_PORT: "4533"
+            ND_REVERSEPROXYUSERHEADER: "Remote-User"
+            ND_REVERSEPROXYWHITELIST: "172.20.0.0/16"
+        volumes:
+            - /mnt/hdd/media/music:/music:ro
+            - ${SSD_APP_PATH}/navidrome:/data
+            - /mnt/nvme/navidrome_cache:/cache
+        networks:
+            - nextcloud_net
+            - proxy
+        ports:
+            - "4533:4533"
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "wget",
+                    "--no-verbose",
+                    "--tries=1",
+                    "--spider",
+                    "http://localhost:4533/ping",
+                ]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+
+    # Music discovery and acquisition service
+    lidarr:
+        image: linuxserver/lidarr:latest
+        container_name: stepheybot_music_lidarr
+        restart: unless-stopped
+        environment:
+            - PUID=1000
+            - PGID=1000
+            - TZ=UTC
+            - UMASK_SET=022
+        volumes:
+            - ${SSD_APP_PATH}/lidarr:/config
+            - /mnt/hdd/media/music:/music
+            - /mnt/hdd/downloads:/downloads
+        ports:
+            - "8686:8686"
+        networks:
+            - nextcloud_net
+            - proxy
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:8686/ping"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+
+    # ListenBrainz database
+    listenbrainz-db:
+        image: postgres:16-alpine
+        container_name: stepheybot_listenbrainz_db
+        restart: unless-stopped
+        environment:
+            POSTGRES_DB: listenbrainz
+            POSTGRES_USER: listenbrainz
+            POSTGRES_PASSWORD: ${LISTENBRAINZ_DB_PASSWORD}
+            POSTGRES_INITDB_ARGS: "--data-checksums"
+        volumes:
+            - ${SSD_APP_PATH}/listenbrainz-db:/var/lib/postgresql/data
+        networks:
+            - nextcloud_net
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U listenbrainz"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
+    # ListenBrainz Redis
+    listenbrainz-redis:
+        image: redis:7-alpine
+        container_name: stepheybot_listenbrainz_redis
+        restart: unless-stopped
+        command: >
+            redis-server
+            --requirepass ${LISTENBRAINZ_REDIS_PASSWORD}
+            --maxmemory 512mb
+            --maxmemory-policy allkeys-lru
+        volumes:
+            - ${SSD_APP_PATH}/listenbrainz-redis:/data
+        networks:
+            - nextcloud_net
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
+    # ListenBrainz server
+    listenbrainz:
+        image: metabrainz/listenbrainz-server:latest
+        container_name: stepheybot_listenbrainz
+        restart: unless-stopped
+        depends_on:
+            listenbrainz-db:
+                condition: service_healthy
+            listenbrainz-redis:
+                condition: service_healthy
+        environment:
+            - POSTGRES_HOST=listenbrainz-db
+            - POSTGRES_PORT=5432
+            - POSTGRES_USER=listenbrainz
+            - POSTGRES_PASSWORD=${LISTENBRAINZ_DB_PASSWORD}
+            - REDIS_HOST=listenbrainz-redis
+            - REDIS_PORT=6379
+            - REDIS_PASSWORD=${LISTENBRAINZ_REDIS_PASSWORD}
+            - LISTENBRAINZ_HOST=0.0.0.0
+            - LISTENBRAINZ_PORT=8080
+        volumes:
+            - ${SSD_APP_PATH}/listenbrainz-data:/data
+        networks:
+            - nextcloud_net
+            - proxy
+        ports:
+            - "8082:8080"
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "curl",
+                    "-f",
+                    "http://localhost:8080/1/status/get-dump-info",
+                ]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+
+    # StepheyBot Music Brain - Custom recommendation and library expansion service
+    stepheybot-music:
+        build:
+            context: ./music-recommender
+            dockerfile: Dockerfile
+        container_name: stepheybot_music_brain
+        restart: unless-stopped
+        depends_on:
+            - navidrome
+            - listenbrainz
+            - lidarr
+            - redis
+        volumes:
+            - /mnt/hdd/media/music:/music
+            - /mnt/hdd/downloads:/downloads
+            - ${SSD_APP_PATH}/music-recommender/data:/data
+            - ${SSD_APP_PATH}/music-recommender/cache:/cache
+        environment:
+            # Server configuration
+            - STEPHEYBOT__SERVER__PORT=8083
+            - STEPHEYBOT__SERVER__ADDRESS=0.0.0.0
+            - STEPHEYBOT__SERVER__ENABLE_ADMIN_API=true
+
+            # Database configuration
+            - STEPHEYBOT__DATABASE__URL=sqlite:/data/stepheybot-music.db
+            - STEPHEYBOT__DATABASE__MAX_CONNECTIONS=10
+
+            # Navidrome integration
+            - STEPHEYBOT__NAVIDROME__URL=http://navidrome:4533
+            - STEPHEYBOT__NAVIDROME__ADMIN_USER=${NAVIDROME_ADMIN_USER:-admin}
+            - STEPHEYBOT__NAVIDROME__ADMIN_PASSWORD=${NAVIDROME_ADMIN_PASSWORD}
+
+            # ListenBrainz integration
+            - STEPHEYBOT__LISTENBRAINZ__URL=http://listenbrainz:8080
+            - STEPHEYBOT__LISTENBRAINZ__TOKEN=${LISTENBRAINZ_TOKEN:-}
+
+            # Lidarr integration
+            - STEPHEYBOT__LIDARR__URL=http://lidarr:8686
+            - STEPHEYBOT__LIDARR__API_KEY=${STEPHEYBOT__LIDARR__API_KEY}
+
+            # MusicBrainz configuration
+            - STEPHEYBOT__MUSICBRAINZ__USER_AGENT=StepheyBot-Music/1.0 (https://stepheybot.dev)
+
+            # File paths
+            - STEPHEYBOT__PATHS__MUSIC_PATH=/music
+            - STEPHEYBOT__PATHS__DOWNLOAD_PATH=/downloads
+            - STEPHEYBOT__PATHS__CACHE_PATH=/cache
+
+            # Task configuration
+            - STEPHEYBOT__TASKS__SYNC_INTERVAL=3600
+            - STEPHEYBOT__TASKS__RECOMMENDATION_INTERVAL=86400
+            - STEPHEYBOT__TASKS__LIBRARY_SCAN_INTERVAL=1800
+
+            # Recommendation settings
+            - STEPHEYBOT__RECOMMENDATIONS__COUNT=50
+            - STEPHEYBOT__RECOMMENDATIONS__COLLABORATIVE_WEIGHT=0.4
+            - STEPHEYBOT__RECOMMENDATIONS__CONTENT_WEIGHT=0.3
+            - STEPHEYBOT__RECOMMENDATIONS__POPULARITY_WEIGHT=0.2
+            - STEPHEYBOT__RECOMMENDATIONS__TEMPORAL_WEIGHT=0.1
+            - STEPHEYBOT__RECOMMENDATIONS__DISCOVERY_RATIO=0.3
+
+            # Logging
+            - STEPHEYBOT__LOGGING__LEVEL=info
+            - STEPHEYBOT__LOGGING__JSON=false
+
+            # Redis connection (for caching)
+            - REDIS_HOST=redis
+            - REDIS_PASSWORD=${REDIS_PASSWORD}
+        networks:
+            - nextcloud_net
+            - proxy
+        ports:
+            - "8083:8083"
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+
+    # High-performance streaming cache
+    nginx-stream:
+        image: nginx:alpine
+        container_name: nextcloud_stream
+        volumes:
+            - /mnt/nvme/stream:/cache
+            - ./nginx-stream.conf:/etc/nginx/nginx.conf:ro
+        tmpfs:
+            - /tmp:size=2G
+        networks:
+            - nextcloud_net
+
+    # Video transcoding service
+    jellyfin:
+        image: jellyfin/jellyfin:latest
+        container_name: nextcloud_media
+        environment:
+            - JELLYFIN_CACHE_DIR=/transcode
+        volumes:
+            - /mnt/hdd/media:/media:ro
+            - /mnt/hdd/media/music:/music:ro # Add this specific mount for music
+            - /mnt/nvme/transcode:/transcode
+            - /mnt/nvme/stream:/stream-cache
+        devices:
+            - /dev/dri:/dev/dri # Intel GPU
+            - /dev/nvidia0:/dev/nvidia0 # NVIDIA GPU
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - driver: nvidia
+                          count: 1
+                          capabilities: [gpu]
+
+    # Hot storage tier service
+    minio:
+        image: minio/minio:latest
+        container_name: nextcloud_hot_tier
+        command: server /data --console-address ":9001"
+        environment:
+            MINIO_ROOT_USER: ${S3_KEY}
+            MINIO_ROOT_PASSWORD: ${S3_SECRET}
+        volumes:
+            - /mnt/nvme/hot:/data
+        ports:
+            - "9000:9000"
+            - "9001:9001"
+        networks:
+            - nextcloud_net
+
+volumes:
+    nextcloud_data:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: ${SSD_APP_PATH}/nextcloud_app
+    db_data:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: ${SSD_APP_PATH}/nextcloud_db
+    redis_data:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: ${SSD_APP_PATH}/nextcloud_redis
+    elasticsearch_data:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: ${SSD_APP_PATH}/nextcloud_elastic
+    onlyoffice_data:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: ${SSD_APP_PATH}/nextcloud_onlyoffice_data
+    onlyoffice_log:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: ${SSD_APP_PATH}/nextcloud_onlyoffice_log
+    # StepheyBot Music volumes
+    navidrome_data:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: ${SSD_APP_PATH}/navidrome
+    lidarr_data:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: ${SSD_APP_PATH}/lidarr
+    listenbrainz_db_data:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: ${SSD_APP_PATH}/listenbrainz-db
+    listenbrainz_redis_data:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: ${SSD_APP_PATH}/listenbrainz-redis
+    listenbrainz_data:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: ${SSD_APP_PATH}/listenbrainz-data
+    stepheybot_music_data:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: ${SSD_APP_PATH}/music-recommender/data
+    stepheybot_music_cache:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: ${SSD_APP_PATH}/music-recommender/cache
+    caddy_data:
+        driver: local
+    caddy_config:
+        driver: local
+
+networks:
+    proxy:
+        external: true
+    nextcloud_net:
+        driver: bridge
+        ipam:
+            config:
+                - subnet: 172.20.0.0/16

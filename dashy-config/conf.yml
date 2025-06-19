@@ -1,0 +1,127 @@
+---
+# Page meta info
+pageInfo:
+    title: StepheyBot Dashboard
+    description: Mission Control for StepheyBot's Services
+    navLinks:
+        - title: Home
+          path: /
+        - title: GitHub
+          path: https://github.com/RM-Stephey/
+
+# Theme and appearance settings
+appConfig:
+    theme: cyberpunk
+    customColors:
+        primary: "#ff00ff"
+        secondary: "#00ffff"
+        background: "#141021"
+        foreground: "#ebdbb2"
+    statusCheck: true
+    hideComponents:
+        hideFooter: true
+    layout: auto
+    iconSize: medium
+    language: en
+
+# Main content sections
+sections:
+    - name: Cloud Services
+      icon: fas fa-cloud
+      items:
+          - title: Nextcloud
+            description: Your cloud storage and collaboration platform
+            icon: fab fa-nextcloud
+            url: https://cloud.stepheybot.dev
+            target: newtab
+            statusCheck: true
+
+          - title: OnlyOffice
+            description: Document editing and collaboration
+            icon: fas fa-file-alt
+            url: http://localhost:8081
+            target: newtab
+            statusCheck: true
+
+    - name: Media Management
+      icon: fas fa-film
+      items:
+          - title: Jellyfin
+            description: Your own streaming media server
+            icon: fas fa-play-circle
+            url: http://localhost:8096
+            target: newtab
+            statusCheck: true
+
+          - title: Sonarr
+            description: TV show management
+            icon: fas fa-tv
+            url: http://localhost:8989
+            target: newtab
+            statusCheck: true
+
+    - name: Downloads
+      icon: fas fa-download
+      items:
+          - title: qBittorrent
+            description: Torrent client
+            icon: fas fa-download
+            url: http://localhost:8090
+            target: newtab
+            statusCheck: true
+
+          - title: RDTClient
+            description: Real-Debrid client
+            icon: fas fa-cloud-download-alt
+            url: http://localhost:6500
+            target: newtab
+            statusCheck: true
+
+          - title: Prowlarr
+            description: Indexer manager
+            icon: fas fa-search
+            url: http://localhost:9696
+            target: newtab
+            statusCheck: true
+
+    - name: System
+      icon: fas fa-server
+      items:
+          - title: Home Assistant
+            description: Home automation platform
+            icon: fas fa-home
+            url: http://localhost:8123
+            target: newtab
+            statusCheck: true
+
+          - title: MinIO Storage
+            description: S3-compatible object storage
+            icon: fas fa-database
+            url: http://localhost:9000
+            target: newtab
+            statusCheck: true
+
+          - title: MinIO Console
+            description: Object storage management UI
+            icon: fas fa-server
+            url: http://localhost:9001
+            target: newtab
+            statusCheck: true
+
+    - name: Quick Links
+      icon: fas fa-star
+      items:
+          - title: GitHub
+            icon: fab fa-github
+            url: https://github.com
+            target: newtab
+
+          - title: Speedtest
+            icon: fas fa-tachometer-alt
+            url: https://www.speedtest.net
+            target: newtab
+
+          - title: IP Info
+            icon: fas fa-network-wired
+            url: https://ipinfo.io
+            target: newtab
