@@ -47,6 +47,7 @@ services:
             --requirepass ${REDIS_PASSWORD}
             --maxmemory 2gb
             --maxmemory-policy allkeys-lru
+            --maxmemory-policy noeviction
             --save 60 1000
             --save 300 100
             --save 900 10
@@ -102,10 +103,14 @@ services:
             OVERWRITEHOST: cloud.stepheybot.dev
 
             # Object storage (optional)
-            OBJECTSTORE_S3_BUCKET: ${S3_BUCKET:-}
-            OBJECTSTORE_S3_KEY: ${S3_KEY:-}
-            OBJECTSTORE_S3_SECRET: ${S3_SECRET:-}
-            OBJECTSTORE_S3_REGION: ${S3_REGION:-}
+            # OBJECTSTORE_S3_BUCKET: ${S3_BUCKET:-}
+            # OBJECTSTORE_S3_KEY: 42XDIRDC47W3WGCOT2XR
+            # OBJECTSTORE_S3_SECRET: z7nDQkl8ij7JL1Po89bPNdHkDJL531cH5MQajPJA
+            # OBJECTSTORE_S3_REGION: ${S3_REGION:-}
+            # OBJECTSTORE_S3_HOST: ${S3_HOST:-}
+            # OBJECTSTORE_S3_PORT: ${S3_PORT:-}
+            # OBJECTSTORE_S3_USE_SSL: ${S3_USE_SSL:-}
+            # OBJECTSTORE_S3_USE_PATH_STYLE: ${S3_USE_PATH_STYLE:-}
         volumes:
             - nextcloud_data:/var/www/html
             - ${DATA_DIR}:/var/www/html/data
@@ -271,9 +276,210 @@ services:
             - proxy
             - nextcloud_net
 
-        # Single OAuth2-Proxy can handle multiple services via VPS nginx routing
-        # No need for multiple instances - just route different domains to port 4180
-        # and configure different upstreams in OAuth2-Proxy based on Host header
+    # OAuth2 Proxy for Navidrome (Music Server)
+    oauth2-proxy-music:
+        image: quay.io/oauth2-proxy/oauth2-proxy:v7.4.0
+        container_name: oauth2-proxy-music
+        restart: unless-stopped
+        depends_on:
+            redis:
+                condition: service_healthy
+        environment:
+            - OAUTH2_PROXY_PROVIDER=oidc
+            - OAUTH2_PROXY_CLIENT_ID=stepheybot-services
+            - OAUTH2_PROXY_CLIENT_SECRET=PNU9kEvkUroHNWI9P6V5lvoi6uK62znY
+            - OAUTH2_PROXY_REDIRECT_URL=https://navidrome.stepheybot.dev/oauth2/callback
+            - OAUTH2_PROXY_OIDC_ISSUER_URL=https://sso.axiomethica.io/realms/stepheybot
+            - OAUTH2_PROXY_COOKIE_SECRET=R425qyBFut33rWhQpC2R968dpDezrdl9
+            - OAUTH2_PROXY_COOKIE_SECURE=true
+            - OAUTH2_PROXY_COOKIE_DOMAIN=.stepheybot.dev
+            - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:4180
+            - OAUTH2_PROXY_EMAIL_DOMAINS=*
+            - OAUTH2_PROXY_REVERSE_PROXY=true
+            - OAUTH2_PROXY_SET_XAUTHREQUEST=true
+            - OAUTH2_PROXY_SKIP_PROVIDER_BUTTON=true
+            - OAUTH2_PROXY_PASS_USER_HEADERS=true
+            - OAUTH2_PROXY_COOKIE_REFRESH=1h
+            - OAUTH2_PROXY_WHITELIST_DOMAINS=.stepheybot.dev
+            - OAUTH2_PROXY_PASS_HOST_HEADER=true
+            - OAUTH2_PROXY_PASS_ACCESS_TOKEN=false
+            - OAUTH2_PROXY_SKIP_AUTH_STRIP_HEADERS=false
+            - OAUTH2_PROXY_PRESERVE_HOST=true
+            - OAUTH2_PROXY_UPSTREAMS=http://navidrome:4533
+            - OAUTH2_PROXY_SESSION_STORE_TYPE=redis
+            - OAUTH2_PROXY_REDIS_CONNECTION_URL=redis://redis:6379
+            - OAUTH2_PROXY_REDIS_PASSWORD=${REDIS_PASSWORD}
+            - OAUTH2_PROXY_COOKIE_SAMESITE=lax
+            - OAUTH2_PROXY_SKIP_AUTH_REGEX=^/favicon\.ico$
+        ports:
+            - "4181:4180"
+        networks:
+            - proxy
+            - nextcloud_net
+
+    # OAuth2 Proxy for Lidarr (Music Management)
+    oauth2-proxy-lidarr:
+        image: quay.io/oauth2-proxy/oauth2-proxy:v7.4.0
+        container_name: oauth2-proxy-lidarr
+        restart: unless-stopped
+        depends_on:
+            redis:
+                condition: service_healthy
+        environment:
+            - OAUTH2_PROXY_PROVIDER=oidc
+            - OAUTH2_PROXY_CLIENT_ID=stepheybot-services
+            - OAUTH2_PROXY_CLIENT_SECRET=PNU9kEvkUroHNWI9P6V5lvoi6uK62znY
+            - OAUTH2_PROXY_REDIRECT_URL=https://lidarr.stepheybot.dev/oauth2/callback
+            - OAUTH2_PROXY_OIDC_ISSUER_URL=https://sso.axiomethica.io/realms/stepheybot
+            - OAUTH2_PROXY_COOKIE_SECRET=R425qyBFut33rWhQpC2R968dpDezrdl9
+            - OAUTH2_PROXY_COOKIE_SECURE=true
+            - OAUTH2_PROXY_COOKIE_DOMAIN=.stepheybot.dev
+            - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:4180
+            - OAUTH2_PROXY_EMAIL_DOMAINS=*
+            - OAUTH2_PROXY_REVERSE_PROXY=true
+            - OAUTH2_PROXY_SET_XAUTHREQUEST=true
+            - OAUTH2_PROXY_SKIP_PROVIDER_BUTTON=true
+            - OAUTH2_PROXY_PASS_USER_HEADERS=true
+            - OAUTH2_PROXY_COOKIE_REFRESH=1h
+            - OAUTH2_PROXY_WHITELIST_DOMAINS=.stepheybot.dev
+            - OAUTH2_PROXY_PASS_HOST_HEADER=true
+            - OAUTH2_PROXY_PASS_ACCESS_TOKEN=false
+            - OAUTH2_PROXY_SKIP_AUTH_STRIP_HEADERS=false
+            - OAUTH2_PROXY_PRESERVE_HOST=true
+            - OAUTH2_PROXY_UPSTREAMS=http://lidarr:8686
+            - OAUTH2_PROXY_SESSION_STORE_TYPE=redis
+            - OAUTH2_PROXY_REDIS_CONNECTION_URL=redis://redis:6379
+            - OAUTH2_PROXY_REDIS_PASSWORD=${REDIS_PASSWORD}
+            - OAUTH2_PROXY_COOKIE_SAMESITE=lax
+            - OAUTH2_PROXY_SKIP_AUTH_REGEX=^/favicon\.ico$
+        ports:
+            - "4182:4180"
+        networks:
+            - proxy
+            - nextcloud_net
+
+    # OAuth2 Proxy for ListenBrainz (Music Analytics)
+    oauth2-proxy-listen:
+        image: quay.io/oauth2-proxy/oauth2-proxy:v7.4.0
+        container_name: oauth2-proxy-listen
+        restart: unless-stopped
+        depends_on:
+            redis:
+                condition: service_healthy
+        environment:
+            - OAUTH2_PROXY_PROVIDER=oidc
+            - OAUTH2_PROXY_CLIENT_ID=stepheybot-services
+            - OAUTH2_PROXY_CLIENT_SECRET=PNU9kEvkUroHNWI9P6V5lvoi6uK62znY
+            - OAUTH2_PROXY_REDIRECT_URL=https://listen.stepheybot.dev/oauth2/callback
+            - OAUTH2_PROXY_OIDC_ISSUER_URL=https://sso.axiomethica.io/realms/stepheybot
+            - OAUTH2_PROXY_COOKIE_SECRET=R425qyBFut33rWhQpC2R968dpDezrdl9
+            - OAUTH2_PROXY_COOKIE_SECURE=true
+            - OAUTH2_PROXY_COOKIE_DOMAIN=.stepheybot.dev
+            - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:4180
+            - OAUTH2_PROXY_EMAIL_DOMAINS=*
+            - OAUTH2_PROXY_REVERSE_PROXY=true
+            - OAUTH2_PROXY_SET_XAUTHREQUEST=true
+            - OAUTH2_PROXY_SKIP_PROVIDER_BUTTON=true
+            - OAUTH2_PROXY_PASS_USER_HEADERS=true
+            - OAUTH2_PROXY_COOKIE_REFRESH=1h
+            - OAUTH2_PROXY_WHITELIST_DOMAINS=.stepheybot.dev
+            - OAUTH2_PROXY_PASS_HOST_HEADER=true
+            - OAUTH2_PROXY_PASS_ACCESS_TOKEN=false
+            - OAUTH2_PROXY_SKIP_AUTH_STRIP_HEADERS=false
+            - OAUTH2_PROXY_PRESERVE_HOST=true
+            - OAUTH2_PROXY_UPSTREAMS=http://listenbrainz:3000
+            - OAUTH2_PROXY_SESSION_STORE_TYPE=redis
+            - OAUTH2_PROXY_REDIS_CONNECTION_URL=redis://redis:6379
+            - OAUTH2_PROXY_REDIS_PASSWORD=${REDIS_PASSWORD}
+            - OAUTH2_PROXY_COOKIE_SAMESITE=lax
+            - OAUTH2_PROXY_SKIP_AUTH_REGEX=^/favicon\.ico$
+        ports:
+            - "4183:4180"
+        networks:
+            - proxy
+            - nextcloud_net
+
+    # OAuth2 Proxy for MinIO (S3 Storage)
+    oauth2-proxy-s3:
+        image: quay.io/oauth2-proxy/oauth2-proxy:v7.4.0
+        container_name: oauth2-proxy-s3
+        restart: unless-stopped
+        depends_on:
+            redis:
+                condition: service_healthy
+        environment:
+            - OAUTH2_PROXY_PROVIDER=oidc
+            - OAUTH2_PROXY_CLIENT_ID=stepheybot-services
+            - OAUTH2_PROXY_CLIENT_SECRET=PNU9kEvkUroHNWI9P6V5lvoi6uK62znY
+            - OAUTH2_PROXY_REDIRECT_URL=https://s3.stepheybot.dev/oauth2/callback
+            - OAUTH2_PROXY_OIDC_ISSUER_URL=https://sso.axiomethica.io/realms/stepheybot
+            - OAUTH2_PROXY_COOKIE_SECRET=R425qyBFut33rWhQpC2R968dpDezrdl9
+            - OAUTH2_PROXY_COOKIE_SECURE=true
+            - OAUTH2_PROXY_COOKIE_DOMAIN=.stepheybot.dev
+            - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:4180
+            - OAUTH2_PROXY_EMAIL_DOMAINS=*
+            - OAUTH2_PROXY_REVERSE_PROXY=true
+            - OAUTH2_PROXY_SET_XAUTHREQUEST=true
+            - OAUTH2_PROXY_SKIP_PROVIDER_BUTTON=true
+            - OAUTH2_PROXY_PASS_USER_HEADERS=true
+            - OAUTH2_PROXY_COOKIE_REFRESH=1h
+            - OAUTH2_PROXY_WHITELIST_DOMAINS=.stepheybot.dev
+            - OAUTH2_PROXY_PASS_HOST_HEADER=true
+            - OAUTH2_PROXY_PASS_ACCESS_TOKEN=false
+            - OAUTH2_PROXY_SKIP_AUTH_STRIP_HEADERS=false
+            - OAUTH2_PROXY_PRESERVE_HOST=true
+            - OAUTH2_PROXY_UPSTREAMS=http://minio:9001
+            - OAUTH2_PROXY_SESSION_STORE_TYPE=redis
+            - OAUTH2_PROXY_REDIS_CONNECTION_URL=redis://redis:6379
+            - OAUTH2_PROXY_REDIS_PASSWORD=${REDIS_PASSWORD}
+            - OAUTH2_PROXY_COOKIE_SAMESITE=lax
+            - OAUTH2_PROXY_SKIP_AUTH_REGEX=^/favicon\.ico$
+        ports:
+            - "4184:4180"
+        networks:
+            - proxy
+            - nextcloud_net
+
+    # OAuth2 Proxy for StepheyBot Music (Custom Service)
+    oauth2-proxy-stepheybot:
+        image: quay.io/oauth2-proxy/oauth2-proxy:v7.4.0
+        container_name: oauth2-proxy-stepheybot
+        restart: unless-stopped
+        depends_on:
+            redis:
+                condition: service_healthy
+        environment:
+            - OAUTH2_PROXY_PROVIDER=oidc
+            - OAUTH2_PROXY_CLIENT_ID=stepheybot-services
+            - OAUTH2_PROXY_CLIENT_SECRET=PNU9kEvkUroHNWI9P6V5lvoi6uK62znY
+            - OAUTH2_PROXY_REDIRECT_URL=https://music.stepheybot.dev/oauth2/callback
+            - OAUTH2_PROXY_OIDC_ISSUER_URL=https://sso.axiomethica.io/realms/stepheybot
+            - OAUTH2_PROXY_COOKIE_SECRET=R425qyBFut33rWhQpC2R968dpDezrdl9
+            - OAUTH2_PROXY_COOKIE_SECURE=true
+            - OAUTH2_PROXY_COOKIE_DOMAIN=.stepheybot.dev
+            - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:4180
+            - OAUTH2_PROXY_EMAIL_DOMAINS=*
+            - OAUTH2_PROXY_REVERSE_PROXY=true
+            - OAUTH2_PROXY_SET_XAUTHREQUEST=true
+            - OAUTH2_PROXY_SKIP_PROVIDER_BUTTON=true
+            - OAUTH2_PROXY_PASS_USER_HEADERS=true
+            - OAUTH2_PROXY_COOKIE_REFRESH=1h
+            - OAUTH2_PROXY_WHITELIST_DOMAINS=.stepheybot.dev
+            - OAUTH2_PROXY_PASS_HOST_HEADER=true
+            - OAUTH2_PROXY_PASS_ACCESS_TOKEN=false
+            - OAUTH2_PROXY_SKIP_AUTH_STRIP_HEADERS=false
+            - OAUTH2_PROXY_PRESERVE_HOST=true
+            - OAUTH2_PROXY_UPSTREAMS=http://stepheybot-music:8083
+            - OAUTH2_PROXY_SESSION_STORE_TYPE=redis
+            - OAUTH2_PROXY_REDIS_CONNECTION_URL=redis://redis:6379
+            - OAUTH2_PROXY_REDIS_PASSWORD=${REDIS_PASSWORD}
+            - OAUTH2_PROXY_COOKIE_SAMESITE=lax
+            - OAUTH2_PROXY_SKIP_AUTH_REGEX=^/favicon\.ico$
+        ports:
+            - "4186:4180"
+        networks:
+            - proxy
+            - nextcloud_net
 
         # Preview generator with GPU support
     preview_generator:
@@ -500,7 +706,7 @@ services:
             - STEPHEYBOT__DATABASE__MAX_CONNECTIONS=10
 
             # Navidrome integration
-            - STEPHEYBOT__NAVIDROME__URL=http://navidrome:4533
+            - STEPHEYBOT__NAVIDROME__URL=http://navidrome:4533/music
             - STEPHEYBOT__NAVIDROME__ADMIN_USER=${NAVIDROME_ADMIN_USER:-admin}
             - STEPHEYBOT__NAVIDROME__ADMIN_PASSWORD=${NAVIDROME_ADMIN_PASSWORD}
 
@@ -589,17 +795,97 @@ services:
     minio:
         image: minio/minio:latest
         container_name: nextcloud_hot_tier
-        command: server /data --console-address ":9001"
+        # The command format is critical - use this exact format:
+        command: server --address ":9000" --console-address ":9001" /data
         environment:
-            MINIO_ROOT_USER: ${S3_KEY}
-            MINIO_ROOT_PASSWORD: ${S3_SECRET}
+            MINIO_ROOT_USER: minioadmin
+            MINIO_ROOT_PASSWORD: minioadmin123
+            # These disable security restrictions:
+            MINIO_DOMAIN: "*"
+            MINIO_BROWSER_REDIRECT_URL: http://localhost:9001
+            MINIO_SERVER_URL: http://localhost:9000
+            MINIO_HTTP_TRACE_ALL: "1"
+            MINIO_BROWSER: "on"
+            # Disable authentication for testing:
+            MINIO_IDENTITY_OPENID_CONFIG_URL: ""
         volumes:
             - /mnt/nvme/hot:/data
         ports:
             - "9000:9000"
             - "9001:9001"
         networks:
+            nextcloud_net:
+                ipv4_address: 172.20.0.50
+
+    affine-db:
+        image: postgres:15
+        container_name: affine_db
+        restart: unless-stopped
+        environment:
+            POSTGRES_DB: affine
+            POSTGRES_USER: affine
+            POSTGRES_PASSWORD: ${AFFINE_DB_PASSWORD}
+            POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+        volumes:
+            - affine_db_data:/var/lib/postgresql/data
+        networks:
             - nextcloud_net
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U affine -d affine"]
+            interval: 30s
+            timeout: 10s
+            retries: 5
+
+    affine_migration:
+        image: ghcr.io/toeverything/affine-graphql:stable
+        container_name: affine_migration_job
+        volumes:
+            - affine_config:/root/.affine/config
+            - affine_data:/root/.affine/storage
+        command: ["sh", "-c", "node ./scripts/self-host-predeploy.js"]
+        environment:
+            - REDIS_SERVER_HOST=redis
+            - REDIS_SERVER_PASSWORD=${REDIS_PASSWORD}
+            - DATABASE_URL=postgresql://affine:${AFFINE_DB_PASSWORD}@affine-db:5432/affine
+            - AFFINE_INDEXER_ENABLED=false
+        depends_on:
+            affine-db:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        networks:
+            - nextcloud_net
+
+    affine:
+        image: ghcr.io/toeverything/affine-graphql:stable
+        container_name: affine_server
+        restart: unless-stopped
+        depends_on:
+            redis:
+                condition: service_healthy
+            affine-db:
+                condition: service_healthy
+            affine_migration:
+                condition: service_completed_successfully
+        environment:
+            - REDIS_SERVER_HOST=redis
+            - REDIS_SERVER_PASSWORD=${REDIS_PASSWORD}
+            - DATABASE_URL=postgresql://affine:${AFFINE_DB_PASSWORD}@affine-db:5432/affine
+            - AFFINE_INDEXER_ENABLED=false
+            - TELEMETRY_ENABLE=false
+        volumes:
+            - affine_config:/root/.affine/config
+            - affine_data:/root/.affine/storage
+        networks:
+            - nextcloud_net
+        ports:
+            - "3010:3010"
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:3010/api/workspaces"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 120s
 
 volumes:
     nextcloud_data:
@@ -681,10 +967,24 @@ volumes:
             type: none
             o: bind
             device: ${SSD_APP_PATH}/music-recommender/cache
-    caddy_data:
+    affine_db_data:
         driver: local
-    caddy_config:
+        driver_opts:
+            type: none
+            o: bind
+            device: ${SSD_APP_PATH}/affine/db
+    affine_data:
         driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: ${SSD_APP_PATH}/affine/data
+    affine_config:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: ${SSD_APP_PATH}/affine/config
 
 networks:
     proxy:
