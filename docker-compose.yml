@@ -235,253 +235,46 @@ services:
         environment:
             - NODE_ENV=production
 
-    oauth2-proxy:
-        image: quay.io/oauth2-proxy/oauth2-proxy:v7.4.0
-        container_name: oauth2-proxy
+    authelia:
+        image: authelia/authelia:latest
+        container_name: authelia-unified
         restart: unless-stopped
         depends_on:
             redis:
                 condition: service_healthy
         environment:
-            - OAUTH2_PROXY_PROVIDER=oidc
-            - OAUTH2_PROXY_CLIENT_ID=stepheybot-services
-            - OAUTH2_PROXY_CLIENT_SECRET=PNU9kEvkUroHNWI9P6V5lvoi6uK62znY
-            - OAUTH2_PROXY_REDIRECT_URL=https://dashboard.stepheybot.dev/oauth2/callback
-            - OAUTH2_PROXY_OIDC_ISSUER_URL=https://sso.axiomethica.io/realms/stepheybot
-            - OAUTH2_PROXY_COOKIE_SECRET=R425qyBFut33rWhQpC2R968dpDezrdl9
-            - OAUTH2_PROXY_COOKIE_SECURE=true
-            - OAUTH2_PROXY_COOKIE_DOMAIN=.stepheybot.dev
-            - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:4180
-            - OAUTH2_PROXY_EMAIL_DOMAINS=*
-            - OAUTH2_PROXY_REVERSE_PROXY=true
-            - OAUTH2_PROXY_SET_XAUTHREQUEST=true
-            - OAUTH2_PROXY_SKIP_PROVIDER_BUTTON=true
-            - OAUTH2_PROXY_PASS_USER_HEADERS=true
-            - OAUTH2_PROXY_COOKIE_REFRESH=1h
-            - OAUTH2_PROXY_WHITELIST_DOMAINS=.stepheybot.dev
-            - OAUTH2_PROXY_PASS_HOST_HEADER=true
-            - OAUTH2_PROXY_PASS_ACCESS_TOKEN=false
-            - OAUTH2_PROXY_SKIP_AUTH_STRIP_HEADERS=false
-            - OAUTH2_PROXY_PRESERVE_HOST=true
-            - OAUTH2_PROXY_UPSTREAMS=http://dashy:8080
-            # Use Redis for session storage to eliminate cookie fragmentation
-            - OAUTH2_PROXY_SESSION_STORE_TYPE=redis
-            - OAUTH2_PROXY_REDIS_CONNECTION_URL=redis://redis:6379
-            - OAUTH2_PROXY_REDIS_PASSWORD=${REDIS_PASSWORD}
-            - OAUTH2_PROXY_COOKIE_SAMESITE=lax
-            - OAUTH2_PROXY_SKIP_AUTH_REGEX=^/favicon\.ico$
-        ports:
-            - "4180:4180"
+            - AUTHELIA_JWT_SECRET=${AUTHELIA_JWT_SECRET}
+            - AUTHELIA_SESSION_SECRET=${AUTHELIA_SESSION_SECRET}
+            - AUTHELIA_STORAGE_ENCRYPTION_KEY=${AUTHELIA_STORAGE_ENCRYPTION_KEY}
+            - REDIS_PASSWORD=${REDIS_PASSWORD}
+        volumes:
+            - ./authelia-config.yml:/config/configuration.yml:ro
+            - ./users_database.yml:/config/users_database.yml:ro
+            - ${SSD_APP_PATH}/authelia-data:/config/data
+            - ${SSD_APP_PATH}/authelia-secrets:/config/secrets
         networks:
-            - proxy
             - nextcloud_net
-
-    # OAuth2 Proxy for Navidrome (Music Server)
-    oauth2-proxy-music:
-        image: quay.io/oauth2-proxy/oauth2-proxy:v7.4.0
-        container_name: oauth2-proxy-music
-        restart: unless-stopped
-        depends_on:
-            redis:
-                condition: service_healthy
-        environment:
-            - OAUTH2_PROXY_PROVIDER=oidc
-            - OAUTH2_PROXY_CLIENT_ID=stepheybot-services
-            - OAUTH2_PROXY_CLIENT_SECRET=PNU9kEvkUroHNWI9P6V5lvoi6uK62znY
-            - OAUTH2_PROXY_REDIRECT_URL=https://navidrome.stepheybot.dev/oauth2/callback
-            - OAUTH2_PROXY_OIDC_ISSUER_URL=https://sso.axiomethica.io/realms/stepheybot
-            - OAUTH2_PROXY_COOKIE_SECRET=R425qyBFut33rWhQpC2R968dpDezrdl9
-            - OAUTH2_PROXY_COOKIE_SECURE=true
-            - OAUTH2_PROXY_COOKIE_DOMAIN=.stepheybot.dev
-            - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:4180
-            - OAUTH2_PROXY_EMAIL_DOMAINS=*
-            - OAUTH2_PROXY_REVERSE_PROXY=true
-            - OAUTH2_PROXY_SET_XAUTHREQUEST=true
-            - OAUTH2_PROXY_SKIP_PROVIDER_BUTTON=true
-            - OAUTH2_PROXY_PASS_USER_HEADERS=true
-            - OAUTH2_PROXY_COOKIE_REFRESH=1h
-            - OAUTH2_PROXY_WHITELIST_DOMAINS=.stepheybot.dev
-            - OAUTH2_PROXY_PASS_HOST_HEADER=true
-            - OAUTH2_PROXY_PASS_ACCESS_TOKEN=false
-            - OAUTH2_PROXY_SKIP_AUTH_STRIP_HEADERS=false
-            - OAUTH2_PROXY_PRESERVE_HOST=true
-            - OAUTH2_PROXY_UPSTREAMS=http://navidrome:4533
-            - OAUTH2_PROXY_SESSION_STORE_TYPE=redis
-            - OAUTH2_PROXY_REDIS_CONNECTION_URL=redis://redis:6379
-            - OAUTH2_PROXY_REDIS_PASSWORD=${REDIS_PASSWORD}
-            - OAUTH2_PROXY_COOKIE_SAMESITE=lax
-            - OAUTH2_PROXY_SKIP_AUTH_REGEX=^/favicon\.ico$
+            - proxy
         ports:
-            - "4181:4180"
-        networks:
-            - proxy
-            - nextcloud_net
+            - "9091:9091"
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "wget",
+                    "--no-verbose",
+                    "--tries=1",
+                    "--spider",
+                    "http://localhost:9091/api/health",
+                ]
+            interval: 30s
+            timeout: 10s
+            retries: 5
 
-    # OAuth2 Proxy for Lidarr (Music Management)
-    oauth2-proxy-lidarr:
-        image: quay.io/oauth2-proxy/oauth2-proxy:v7.4.0
-        container_name: oauth2-proxy-lidarr
-        restart: unless-stopped
-        depends_on:
-            redis:
-                condition: service_healthy
-        environment:
-            - OAUTH2_PROXY_PROVIDER=oidc
-            - OAUTH2_PROXY_CLIENT_ID=stepheybot-services
-            - OAUTH2_PROXY_CLIENT_SECRET=PNU9kEvkUroHNWI9P6V5lvoi6uK62znY
-            - OAUTH2_PROXY_REDIRECT_URL=https://lidarr.stepheybot.dev/oauth2/callback
-            - OAUTH2_PROXY_OIDC_ISSUER_URL=https://sso.axiomethica.io/realms/stepheybot
-            - OAUTH2_PROXY_COOKIE_SECRET=R425qyBFut33rWhQpC2R968dpDezrdl9
-            - OAUTH2_PROXY_COOKIE_SECURE=true
-            - OAUTH2_PROXY_COOKIE_DOMAIN=.stepheybot.dev
-            - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:4180
-            - OAUTH2_PROXY_EMAIL_DOMAINS=*
-            - OAUTH2_PROXY_REVERSE_PROXY=true
-            - OAUTH2_PROXY_SET_XAUTHREQUEST=true
-            - OAUTH2_PROXY_SKIP_PROVIDER_BUTTON=true
-            - OAUTH2_PROXY_PASS_USER_HEADERS=true
-            - OAUTH2_PROXY_COOKIE_REFRESH=1h
-            - OAUTH2_PROXY_WHITELIST_DOMAINS=.stepheybot.dev
-            - OAUTH2_PROXY_PASS_HOST_HEADER=true
-            - OAUTH2_PROXY_PASS_ACCESS_TOKEN=false
-            - OAUTH2_PROXY_SKIP_AUTH_STRIP_HEADERS=false
-            - OAUTH2_PROXY_PRESERVE_HOST=true
-            - OAUTH2_PROXY_UPSTREAMS=http://lidarr:8686
-            - OAUTH2_PROXY_SESSION_STORE_TYPE=redis
-            - OAUTH2_PROXY_REDIS_CONNECTION_URL=redis://redis:6379
-            - OAUTH2_PROXY_REDIS_PASSWORD=${REDIS_PASSWORD}
-            - OAUTH2_PROXY_COOKIE_SAMESITE=lax
-            - OAUTH2_PROXY_SKIP_AUTH_REGEX=^/favicon\.ico$
-        ports:
-            - "4182:4180"
-        networks:
-            - proxy
-            - nextcloud_net
+    # Authelia replaces all OAuth2 proxy services with a single unified authentication service
+    # It provides better multi-proxy chain support and more robust session management
 
-    # OAuth2 Proxy for ListenBrainz (Music Analytics)
-    oauth2-proxy-listen:
-        image: quay.io/oauth2-proxy/oauth2-proxy:v7.4.0
-        container_name: oauth2-proxy-listen
-        restart: unless-stopped
-        depends_on:
-            redis:
-                condition: service_healthy
-        environment:
-            - OAUTH2_PROXY_PROVIDER=oidc
-            - OAUTH2_PROXY_CLIENT_ID=stepheybot-services
-            - OAUTH2_PROXY_CLIENT_SECRET=PNU9kEvkUroHNWI9P6V5lvoi6uK62znY
-            - OAUTH2_PROXY_REDIRECT_URL=https://listen.stepheybot.dev/oauth2/callback
-            - OAUTH2_PROXY_OIDC_ISSUER_URL=https://sso.axiomethica.io/realms/stepheybot
-            - OAUTH2_PROXY_COOKIE_SECRET=R425qyBFut33rWhQpC2R968dpDezrdl9
-            - OAUTH2_PROXY_COOKIE_SECURE=true
-            - OAUTH2_PROXY_COOKIE_DOMAIN=.stepheybot.dev
-            - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:4180
-            - OAUTH2_PROXY_EMAIL_DOMAINS=*
-            - OAUTH2_PROXY_REVERSE_PROXY=true
-            - OAUTH2_PROXY_SET_XAUTHREQUEST=true
-            - OAUTH2_PROXY_SKIP_PROVIDER_BUTTON=true
-            - OAUTH2_PROXY_PASS_USER_HEADERS=true
-            - OAUTH2_PROXY_COOKIE_REFRESH=1h
-            - OAUTH2_PROXY_WHITELIST_DOMAINS=.stepheybot.dev
-            - OAUTH2_PROXY_PASS_HOST_HEADER=true
-            - OAUTH2_PROXY_PASS_ACCESS_TOKEN=false
-            - OAUTH2_PROXY_SKIP_AUTH_STRIP_HEADERS=false
-            - OAUTH2_PROXY_PRESERVE_HOST=true
-            - OAUTH2_PROXY_UPSTREAMS=http://listenbrainz:3000
-            - OAUTH2_PROXY_SESSION_STORE_TYPE=redis
-            - OAUTH2_PROXY_REDIS_CONNECTION_URL=redis://redis:6379
-            - OAUTH2_PROXY_REDIS_PASSWORD=${REDIS_PASSWORD}
-            - OAUTH2_PROXY_COOKIE_SAMESITE=lax
-            - OAUTH2_PROXY_SKIP_AUTH_REGEX=^/favicon\.ico$
-        ports:
-            - "4183:4180"
-        networks:
-            - proxy
-            - nextcloud_net
-
-    # OAuth2 Proxy for MinIO (S3 Storage)
-    oauth2-proxy-s3:
-        image: quay.io/oauth2-proxy/oauth2-proxy:v7.4.0
-        container_name: oauth2-proxy-s3
-        restart: unless-stopped
-        depends_on:
-            redis:
-                condition: service_healthy
-        environment:
-            - OAUTH2_PROXY_PROVIDER=oidc
-            - OAUTH2_PROXY_CLIENT_ID=stepheybot-services
-            - OAUTH2_PROXY_CLIENT_SECRET=PNU9kEvkUroHNWI9P6V5lvoi6uK62znY
-            - OAUTH2_PROXY_REDIRECT_URL=https://s3.stepheybot.dev/oauth2/callback
-            - OAUTH2_PROXY_OIDC_ISSUER_URL=https://sso.axiomethica.io/realms/stepheybot
-            - OAUTH2_PROXY_COOKIE_SECRET=R425qyBFut33rWhQpC2R968dpDezrdl9
-            - OAUTH2_PROXY_COOKIE_SECURE=true
-            - OAUTH2_PROXY_COOKIE_DOMAIN=.stepheybot.dev
-            - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:4180
-            - OAUTH2_PROXY_EMAIL_DOMAINS=*
-            - OAUTH2_PROXY_REVERSE_PROXY=true
-            - OAUTH2_PROXY_SET_XAUTHREQUEST=true
-            - OAUTH2_PROXY_SKIP_PROVIDER_BUTTON=true
-            - OAUTH2_PROXY_PASS_USER_HEADERS=true
-            - OAUTH2_PROXY_COOKIE_REFRESH=1h
-            - OAUTH2_PROXY_WHITELIST_DOMAINS=.stepheybot.dev
-            - OAUTH2_PROXY_PASS_HOST_HEADER=true
-            - OAUTH2_PROXY_PASS_ACCESS_TOKEN=false
-            - OAUTH2_PROXY_SKIP_AUTH_STRIP_HEADERS=false
-            - OAUTH2_PROXY_PRESERVE_HOST=true
-            - OAUTH2_PROXY_UPSTREAMS=http://minio:9001
-            - OAUTH2_PROXY_SESSION_STORE_TYPE=redis
-            - OAUTH2_PROXY_REDIS_CONNECTION_URL=redis://redis:6379
-            - OAUTH2_PROXY_REDIS_PASSWORD=${REDIS_PASSWORD}
-            - OAUTH2_PROXY_COOKIE_SAMESITE=lax
-            - OAUTH2_PROXY_SKIP_AUTH_REGEX=^/favicon\.ico$
-        ports:
-            - "4184:4180"
-        networks:
-            - proxy
-            - nextcloud_net
-
-    # OAuth2 Proxy for StepheyBot Music (Custom Service)
-    oauth2-proxy-stepheybot:
-        image: quay.io/oauth2-proxy/oauth2-proxy:v7.4.0
-        container_name: oauth2-proxy-stepheybot
-        restart: unless-stopped
-        depends_on:
-            redis:
-                condition: service_healthy
-        environment:
-            - OAUTH2_PROXY_PROVIDER=oidc
-            - OAUTH2_PROXY_CLIENT_ID=stepheybot-services
-            - OAUTH2_PROXY_CLIENT_SECRET=PNU9kEvkUroHNWI9P6V5lvoi6uK62znY
-            - OAUTH2_PROXY_REDIRECT_URL=https://music.stepheybot.dev/oauth2/callback
-            - OAUTH2_PROXY_OIDC_ISSUER_URL=https://sso.axiomethica.io/realms/stepheybot
-            - OAUTH2_PROXY_COOKIE_SECRET=R425qyBFut33rWhQpC2R968dpDezrdl9
-            - OAUTH2_PROXY_COOKIE_SECURE=true
-            - OAUTH2_PROXY_COOKIE_DOMAIN=.stepheybot.dev
-            - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:4180
-            - OAUTH2_PROXY_EMAIL_DOMAINS=*
-            - OAUTH2_PROXY_REVERSE_PROXY=true
-            - OAUTH2_PROXY_SET_XAUTHREQUEST=true
-            - OAUTH2_PROXY_SKIP_PROVIDER_BUTTON=true
-            - OAUTH2_PROXY_PASS_USER_HEADERS=true
-            - OAUTH2_PROXY_COOKIE_REFRESH=1h
-            - OAUTH2_PROXY_WHITELIST_DOMAINS=.stepheybot.dev
-            - OAUTH2_PROXY_PASS_HOST_HEADER=true
-            - OAUTH2_PROXY_PASS_ACCESS_TOKEN=false
-            - OAUTH2_PROXY_SKIP_AUTH_STRIP_HEADERS=false
-            - OAUTH2_PROXY_PRESERVE_HOST=true
-            - OAUTH2_PROXY_UPSTREAMS=http://stepheybot-music:8083
-            - OAUTH2_PROXY_SESSION_STORE_TYPE=redis
-            - OAUTH2_PROXY_REDIS_CONNECTION_URL=redis://redis:6379
-            - OAUTH2_PROXY_REDIS_PASSWORD=${REDIS_PASSWORD}
-            - OAUTH2_PROXY_COOKIE_SAMESITE=lax
-            - OAUTH2_PROXY_SKIP_AUTH_REGEX=^/favicon\.ico$
-        ports:
-            - "4186:4180"
-        networks:
-            - proxy
-            - nextcloud_net
-
-        # Preview generator with GPU support
+    # Preview generator with GPU support
     preview_generator:
         image: nextcloud:30-fpm
         container_name: nextcloud_preview
@@ -599,85 +392,6 @@ services:
             timeout: 10s
             retries: 3
 
-    # ListenBrainz database
-    listenbrainz-db:
-        image: postgres:16-alpine
-        container_name: stepheybot_listenbrainz_db
-        restart: unless-stopped
-        environment:
-            POSTGRES_DB: listenbrainz
-            POSTGRES_USER: listenbrainz
-            POSTGRES_PASSWORD: ${LISTENBRAINZ_DB_PASSWORD}
-            POSTGRES_INITDB_ARGS: "--data-checksums"
-        volumes:
-            - ${SSD_APP_PATH}/listenbrainz-db:/var/lib/postgresql/data
-        networks:
-            - nextcloud_net
-        healthcheck:
-            test: ["CMD-SHELL", "pg_isready -U listenbrainz"]
-            interval: 10s
-            timeout: 5s
-            retries: 5
-
-    # ListenBrainz Redis
-    listenbrainz-redis:
-        image: redis:7-alpine
-        container_name: stepheybot_listenbrainz_redis
-        restart: unless-stopped
-        command: >
-            redis-server
-            --requirepass ${LISTENBRAINZ_REDIS_PASSWORD}
-            --maxmemory 512mb
-            --maxmemory-policy allkeys-lru
-        volumes:
-            - ${SSD_APP_PATH}/listenbrainz-redis:/data
-        networks:
-            - nextcloud_net
-        healthcheck:
-            test: ["CMD", "redis-cli", "ping"]
-            interval: 10s
-            timeout: 5s
-            retries: 5
-
-    # ListenBrainz server
-    listenbrainz:
-        image: metabrainz/listenbrainz-server:latest
-        container_name: stepheybot_listenbrainz
-        restart: unless-stopped
-        depends_on:
-            listenbrainz-db:
-                condition: service_healthy
-            listenbrainz-redis:
-                condition: service_healthy
-        environment:
-            - POSTGRES_HOST=listenbrainz-db
-            - POSTGRES_PORT=5432
-            - POSTGRES_USER=listenbrainz
-            - POSTGRES_PASSWORD=${LISTENBRAINZ_DB_PASSWORD}
-            - REDIS_HOST=listenbrainz-redis
-            - REDIS_PORT=6379
-            - REDIS_PASSWORD=${LISTENBRAINZ_REDIS_PASSWORD}
-            - LISTENBRAINZ_HOST=0.0.0.0
-            - LISTENBRAINZ_PORT=8080
-        volumes:
-            - ${SSD_APP_PATH}/listenbrainz-data:/data
-        networks:
-            - nextcloud_net
-            - proxy
-        ports:
-            - "8082:8080"
-        healthcheck:
-            test:
-                [
-                    "CMD",
-                    "curl",
-                    "-f",
-                    "http://localhost:8080/1/status/get-dump-info",
-                ]
-            interval: 30s
-            timeout: 10s
-            retries: 3
-
     # StepheyBot Music Brain - Custom recommendation and library expansion service
     stepheybot-music:
         build:
@@ -687,7 +401,6 @@ services:
         restart: unless-stopped
         depends_on:
             - navidrome
-            - listenbrainz
             - lidarr
             - redis
         volumes:
@@ -695,6 +408,7 @@ services:
             - /mnt/hdd/downloads:/downloads
             - ${SSD_APP_PATH}/music-recommender/data:/data
             - ${SSD_APP_PATH}/music-recommender/cache:/cache
+            - /mnt/nvme/stream:/queue
         environment:
             # Server configuration
             - STEPHEYBOT__SERVER__PORT=8083
@@ -709,10 +423,6 @@ services:
             - STEPHEYBOT__NAVIDROME__URL=http://navidrome:4533/music
             - STEPHEYBOT__NAVIDROME__ADMIN_USER=${NAVIDROME_ADMIN_USER:-admin}
             - STEPHEYBOT__NAVIDROME__ADMIN_PASSWORD=${NAVIDROME_ADMIN_PASSWORD}
-
-            # ListenBrainz integration
-            - STEPHEYBOT__LISTENBRAINZ__URL=http://listenbrainz:8080
-            - STEPHEYBOT__LISTENBRAINZ__TOKEN=${LISTENBRAINZ_TOKEN:-}
 
             # Lidarr integration
             - STEPHEYBOT__LIDARR__URL=http://lidarr:8686
@@ -873,6 +583,9 @@ services:
             - DATABASE_URL=postgresql://affine:${AFFINE_DB_PASSWORD}@affine-db:5432/affine
             - AFFINE_INDEXER_ENABLED=false
             - TELEMETRY_ENABLE=false
+            - AFFINE_ENV=production
+            - SERVER_BASE_URL=https://notes.stepheybot.dev
+            - NEXTAUTH_URL=https://notes.stepheybot.dev
         volumes:
             - affine_config:/root/.affine/config
             - affine_data:/root/.affine/storage
@@ -937,24 +650,7 @@ volumes:
             type: none
             o: bind
             device: ${SSD_APP_PATH}/lidarr
-    listenbrainz_db_data:
-        driver: local
-        driver_opts:
-            type: none
-            o: bind
-            device: ${SSD_APP_PATH}/listenbrainz-db
-    listenbrainz_redis_data:
-        driver: local
-        driver_opts:
-            type: none
-            o: bind
-            device: ${SSD_APP_PATH}/listenbrainz-redis
-    listenbrainz_data:
-        driver: local
-        driver_opts:
-            type: none
-            o: bind
-            device: ${SSD_APP_PATH}/listenbrainz-data
+
     stepheybot_music_data:
         driver: local
         driver_opts:

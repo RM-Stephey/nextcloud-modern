@@ -1,0 +1,35 @@
+---
+# Authelia Users Database
+# This is a fallback authentication method
+# Primary authentication will be through Keycloak OIDC
+
+users:
+  stephey:
+    displayname: "Stephey"
+    password: "$argon2id$v=19$m=65536,t=3,p=4$YWJjZGVmZ2hpamtsbW5vcA$K6LdYnC8Ybm5h9zQf0Xo+SO7R4ZOE6a0s6LNX6v8wbk"  # password: stepheybot123 (CHANGE THIS!)
+    email: "stephen@stephey.dev"
+    groups:
+      - admins
+      - users
+      - music
+      - storage
+
+  # Add more users here as needed
+  # user2:
+  #   displayname: "User Two"
+  #   password: "$argon2id$..."
+  #   email: "user2@stepheybot.dev"
+  #   groups:
+  #     - users
+
+groups:
+  - admins
+  - users
+  - music
+  - storage
+  - dashboard
+
+# Password was generated using: echo -n "stepheybot123" | argon2 "abcdefghijklmnop" -e -id -t 3 -m 16 -p 4
+# IMPORTANT: Change the password hash above before production use!
+# You can generate a new hash using:
+# docker run --rm authelia/authelia:latest authelia hash-password --password 'yourpassword'

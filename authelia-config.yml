@@ -1,0 +1,109 @@
+---
+# Authelia Configuration v4.38+
+# Minimal working configuration for StepheyBot services
+
+theme: dark
+
+# Server
+server:
+    address: tcp://0.0.0.0:9091/
+
+# Logging
+log:
+    level: info
+    format: text
+    keep_stdout: true
+
+# Identity validation
+identity_validation:
+    reset_password:
+        jwt_secret: ${AUTHELIA_JWT_SECRET}
+
+# Authentication backend
+authentication_backend:
+    refresh_interval: 5m
+    password_reset:
+        disable: false
+    file:
+        path: /config/users_database.yml
+        password:
+            algorithm: argon2id
+            iterations: 1
+            salt_length: 16
+            parallelism: 8
+            memory: 64
+
+# Access control
+access_control:
+    default_policy: deny
+    rules:
+        - domain: dashboard.stepheybot.dev
+          policy: one_factor
+        - domain: navidrome.stepheybot.dev
+          policy: one_factor
+        - domain: music.stepheybot.dev
+          policy: one_factor
+        - domain: listen.stepheybot.dev
+          policy: one_factor
+        - domain: lidarr.stepheybot.dev
+          policy: one_factor
+        - domain: s3.stepheybot.dev
+          policy: one_factor
+        - domain: notes.stepheybot.dev
+          policy: bypass
+        - domain: cloud.stepheybot.dev
+          policy: bypass
+
+# Session
+session:
+    secret: ${AUTHELIA_SESSION_SECRET}
+    cookies:
+        - domain: stepheybot.dev
+          authelia_url: https://auth.stepheybot.dev
+          default_redirection_url: https://dashboard.stepheybot.dev
+          same_site: lax
+          expiration: 12h
+          inactivity: 1h
+          remember_me: 30d
+
+# Rate limiting
+regulation:
+    max_retries: 3
+    find_time: 2m
+    ban_time: 5m
+
+# Storage
+storage:
+    encryption_key: ${AUTHELIA_STORAGE_ENCRYPTION_KEY}
+    local:
+        path: /config/data/db.sqlite3
+
+# Notifications
+notifier:
+    disable_startup_check: false
+    filesystem:
+        filename: /config/data/notification.txt
+
+# TOTP
+totp:
+    disable: false
+    issuer: stepheybot.dev
+    algorithm: sha1
+    digits: 6
+    period: 30
+    skew: 1
+    secret_size: 32
+
+# Password policy
+password_policy:
+    zxcvbn:
+        enabled: true
+        min_score: 3
+
+# NTP
+ntp:
+    address: time.cloudflare.com:123
+    version: 4
+    max_desync: 3s
+    disable_startup_check: false
+    disable_failure: false

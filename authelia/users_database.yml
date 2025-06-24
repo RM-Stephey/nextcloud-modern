@@ -1,0 +1,33 @@
+# Authelia Users Database
+# This file contains user definitions for authentication
+
+users:
+  stephey:
+    displayname: "Stephey"
+    password: "$argon2id$v=19$m=65536,t=3,p=4$c2FsdHNhbHRzYWx0c2FsdA$wOdyUQKsVcGmJRgYzpGwGGWCXHbUjQAMZCPvXlQmH8Q"  # Default: "StepheyBot2024!"
+    email: "stephen@stephey.dev"
+    groups:
+      - admins
+      - users
+
+  admin:
+    displayname: "Admin User"
+    password: "$argon2id$v=19$m=65536,t=3,p=4$c2FsdHNhbHRzYWx0c2FsdA$wOdyUQKsVcGmJRgYzpGwGGWCXHbUjQAMZCPvXlQmH8Q"  # Default: "StepheyBot2024!"
+    email: "admin@stepheybot.dev"
+    groups:
+      - admins
+      - users
+
+# Group definitions
+groups:
+  admins:
+    - stephey
+    - admin
+  users:
+    - stephey
+    - admin
+
+# Note: The default password for both users is "StepheyBot2024!"
+# You should change these passwords after first login
+# To generate new password hashes, you can use:
+# docker run authelia/authelia:latest authelia hash-password 'your-new-password'

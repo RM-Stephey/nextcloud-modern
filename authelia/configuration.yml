@@ -1,0 +1,199 @@
+# Authelia Configuration for StepheyBot Services
+# Handles authentication for multiple Docker services behind nginx proxy
+
+server:
+    host: 0.0.0.0
+    port: 9091
+    path: ""
+    enable_pprof: false
+    enable_expvars: false
+    disable_healthcheck: false
+    tls:
+        key: ""
+        certificate: ""
+
+log:
+    level: info
+    format: text
+    file_path: ""
+    keep_stdout: true
+
+# JWT token settings
+jwt_secret: "${AUTHELIA_JWT_SECRET}"
+default_redirection_url: "https://dashboard.stepheybot.dev"
+
+# Authentication backend - using file-based auth
+authentication_backend:
+    password_reset:
+        disable: false
+    refresh_interval: 5m
+    file:
+        path: /config/users_database.yml
+        password:
+            algorithm: argon2id
+            iterations: 1
+            salt_length: 16
+            parallelism: 8
+            memory: 1024
+
+# Access control rules
+access_control:
+    default_policy: deny
+    networks:
+        - name: internal
+          networks:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+    rules:
+        # Dashboard - allow bypass for main dashboard
+        - domain: dashboard.stepheybot.dev
+          policy: bypass
+
+        # Nextcloud - allow one_factor (since it has its own auth)
+        - domain: cloud.stepheybot.dev
+          policy: bypass
+
+        # Music services - require authentication
+        - domain: music.stepheybot.dev
+          policy: one_factor
+
+        - domain: navidrome.stepheybot.dev
+          policy: one_factor
+
+        - domain: lidarr.stepheybot.dev
+          policy: one_factor
+
+        - domain: listenbrainz.stepheybot.dev
+          policy: one_factor
+
+        # Storage and admin services - require authentication
+        - domain: s3.stepheybot.dev
+          policy: one_factor
+
+        - domain: minio.stepheybot.dev
+          policy: one_factor
+
+        # StepheyBot services
+        - domain: stepheybot-music.stepheybot.dev
+          policy: one_factor
+
+        # Catch-all for any other stepheybot.dev subdomains
+        - domain: "*.stepheybot.dev"
+          policy: one_factor
+
+# Session configuration
+session:
+    name: authelia_session
+    domain: stepheybot.dev
+    same_site: lax
+    secret: "${AUTHELIA_SESSION_SECRET}"
+    expiration: 1h
+    inactivity: 5m
+    remember_me_duration: 1M
+    redis:
+        host: redis
+        port: 6379
+        password: "${REDIS_PASSWORD}"
+        database_index: 1
+        maximum_active_connections: 8
+        minimum_idle_connections: 0
+
+# Rate limiting and brute force protection
+regulation:
+    max_retries: 3
+    find_time: 2m
+    ban_time: 5m
+
+# Storage backend
+storage:
+    encryption_key: "${AUTHELIA_STORAGE_ENCRYPTION_KEY}"
+    local:
+        path: /config/db.sqlite3
+
+# Notification provider (filesystem for now, can switch to SMTP later)
+notifier:
+    disable_startup_check: false
+    filesystem:
+        filename: /config/notification.txt
+
+# Identity providers - OIDC configuration for integration with other services
+identity_providers:
+    oidc:
+        hmac_secret: "${AUTHELIA_OIDC_HMAC_SECRET}"
+        issuer_private_key: "${AUTHELIA_OIDC_PRIVATE_KEY}"
+        access_token_lifespan: 1h
+        authorize_code_lifespan: 1m
+        id_token_lifespan: 1h
+        refresh_token_lifespan: 90m
+        enable_client_debug_messages: false
+        clients:
+            - id: stepheybot-services
+              description: StepheyBot Services Client
+              secret: "${AUTHELIA_CLIENT_SECRET}"
+              public: false
+              authorization_policy: one_factor
+              redirect_uris:
+                  - https://dashboard.stepheybot.dev/oauth2/callback
+                  - https://music.stepheybot.dev/oauth2/callback
+                  - https://navidrome.stepheybot.dev/oauth2/callback
+                  - https://lidarr.stepheybot.dev/oauth2/callback
+                  - https://listenbrainz.stepheybot.dev/oauth2/callback
+                  - https://s3.stepheybot.dev/oauth2/callback
+                  - https://minio.stepheybot.dev/oauth2/callback
+                  - https://stepheybot-music.stepheybot.dev/oauth2/callback
+              scopes:
+                  - openid
+                  - profile
+                  - email
+                  - groups
+              response_types:
+                  - code
+              response_modes:
+                  - form_post
+                  - query
+                  - fragment
+              grant_types:
+                  - refresh_token
+                  - authorization_code
+              userinfo_signing_algorithm: none
+
+# Optional: Duo push notifications (disabled for now)
+duo_api:
+    disable: true
+
+# Optional: TOTP settings
+totp:
+    disable: false
+    issuer: stepheybot.dev
+    algorithm: sha1
+    digits: 6
+    period: 30
+    skew: 1
+    secret_size: 32
+
+# WebAuthn settings (for hardware keys)
+webauthn:
+    disable: false
+    timeout: 60s
+    display_name: StepheyBot Services
+    attestation_conveyance_preference: indirect
+    user_verification: preferred
+    rp_id: stepheybot.dev
+    rp_origins:
+        - https://auth.stepheybot.dev
+    rp_name: StepheyBot Services
+
+# Password policy
+password_policy:
+    standard:
+        enabled: false
+        min_length: 8
+        max_length: 0
+        require_uppercase: true
+        require_lowercase: true
+        require_number: true
+        require_special: true
+    zxcvbn:
+        enabled: true
+        min_score: 3
