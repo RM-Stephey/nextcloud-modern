@@ -346,8 +346,9 @@ services:
             ND_REVERSEPROXYWHITELIST: "172.20.0.0/16"
         volumes:
             - /mnt/hdd/media/music:/music:ro
-            - ${SSD_APP_PATH}/navidrome:/data
-            - /mnt/nvme/navidrome_cache:/cache
+            - navidrome_data:/data
+            - /mnt/nvme/stream:/cache
+            - /mnt/nvme/transcode/transcodes:/transcodes
         networks:
             - nextcloud_net
             - proxy
@@ -378,9 +379,11 @@ services:
             - TZ=UTC
             - UMASK_SET=022
         volumes:
-            - ${SSD_APP_PATH}/lidarr:/config
-            - /mnt/hdd/media/music:/music
-            - /mnt/hdd/downloads:/downloads
+            - lidarr_data:/config
+            - /mnt/hdd/media/music/library:/music:ro
+            - /mnt/nvme/upload:/downloads
+            - /mnt/nvme/upload:/processing
+            - /mnt/hdd/media/music/library:/final
         ports:
             - "8686:8686"
         networks:
@@ -388,6 +391,111 @@ services:
             - proxy
         healthcheck:
             test: ["CMD", "curl", "-f", "http://localhost:8686/ping"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+
+    # VPN service for secure downloading
+    gluetun:
+        image: qmcgaw/gluetun:latest
+        container_name: stepheybot_music_vpn
+        restart: unless-stopped
+        cap_add:
+            - NET_ADMIN
+        environment:
+            # Mullvad WireGuard Configuration
+            - VPN_SERVICE_PROVIDER=mullvad
+            - VPN_TYPE=wireguard
+
+            # Mullvad WireGuard Settings - Get these from your Mullvad account
+            # Go to mullvad.net/account → WireGuard configuration
+            - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+            - WIREGUARD_ADDRESSES=10.66.43.19/32 # Replace with your Address from config (IPv4 part only)
+
+            # Server selection (choose closest to your location)
+            - SERVER_COUNTRIES=USA # or Sweden, Netherlands, etc.
+            # Alternative: specify city - SERVER_CITIES=New York
+
+            # Optional: Custom DNS (Mullvad's DNS)
+            - DOT=off
+            - DNS_ADDRESS=100.64.0.39
+
+            # Network settings
+            - FIREWALL_OUTBOUND_SUBNETS=172.18.0.0/16,172.20.0.0/16 # Allow local network access
+            - HEALTH_TARGET_ADDRESS=1.1.1.1:53 # Health check target
+            - HEALTH_SUCCESS_WAIT_DURATION=5s
+
+            # Logging
+            - LOG_LEVEL=info
+        volumes:
+            - gluetun_data:/gluetun
+            # No additional config files needed for Mullvad - all config via environment variables
+        ports:
+            - "8080:8080" # qBittorrent WebUI
+            - "6882:6882" # qBittorrent torrenting
+            - "6882:6882/udp"
+        networks:
+            - nextcloud_net
+            - proxy
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "wget",
+                    "--no-verbose",
+                    "--tries=1",
+                    "--spider",
+                    "https://1.1.1.1",
+                ]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 30s
+
+    # qBittorrent download client (routes through VPN)
+    qbittorrent:
+        image: linuxserver/qbittorrent:latest
+        container_name: stepheybot_music_qbittorrent
+        restart: unless-stopped
+        network_mode: "service:gluetun" # Route through VPN
+        depends_on:
+            - gluetun
+        environment:
+            - PUID=1000
+            - PGID=1000
+            - TZ=UTC
+            - WEBUI_PORT=8080
+            - TORRENTING_PORT=6882
+        volumes:
+            - qbittorrent_data:/config
+            - /mnt/nvme/upload:/downloads
+            - /mnt/nvme/upload:/incomplete
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:8080"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+
+    # Jackett indexer for music torrents
+    jackett:
+        image: linuxserver/jackett:latest
+        container_name: stepheybot_music_jackett
+        restart: unless-stopped
+        environment:
+            - PUID=1000
+            - PGID=1000
+            - TZ=UTC
+            - AUTO_UPDATE=true
+        volumes:
+            - jackett_data:/config
+            - /mnt/nvme/upload:/downloads
+        ports:
+            - "9117:9117"
+        networks:
+            - nextcloud_net
+            - proxy
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:9117/health"]
             interval: 30s
             timeout: 10s
             retries: 3
@@ -404,11 +512,14 @@ services:
             - lidarr
             - redis
         volumes:
-            - /mnt/hdd/media/music:/music
-            - /mnt/hdd/downloads:/downloads
-            - ${SSD_APP_PATH}/music-recommender/data:/data
-            - ${SSD_APP_PATH}/music-recommender/cache:/cache
+            - /mnt/hdd/media/music/library:/music:ro
+            - /mnt/hdd/downloads:/cold_downloads
+            - /mnt/nvme/upload:/hot_downloads
+            - /mnt/nvme/upload:/processing
+            - stepheybot_music_data:/data
+            - stepheybot_music_cache:/cache
             - /mnt/nvme/stream:/queue
+            - /mnt/hdd/media/music/library:/final_library
         environment:
             # Server configuration
             - STEPHEYBOT__SERVER__PORT=8083
@@ -433,8 +544,17 @@ services:
 
             # File paths
             - STEPHEYBOT__PATHS__MUSIC_PATH=/music
-            - STEPHEYBOT__PATHS__DOWNLOAD_PATH=/downloads
+            - STEPHEYBOT__PATHS__DOWNLOAD_PATH=/hot_downloads
+            - STEPHEYBOT__PATHS__COLD_DOWNLOAD_PATH=/cold_downloads
+            - STEPHEYBOT__PATHS__PROCESSING_PATH=/processing
+            - STEPHEYBOT__PATHS__FINAL_LIBRARY_PATH=/final_library
             - STEPHEYBOT__PATHS__CACHE_PATH=/cache
+
+            # Tiered storage configuration
+            - STEPHEYBOT__STORAGE__ENABLE_TIERED=true
+            - STEPHEYBOT__STORAGE__AUTO_OFFLOAD=true
+            - STEPHEYBOT__STORAGE__OFFLOAD_DELAY=300
+            - STEPHEYBOT__STORAGE__VERIFY_INTEGRITY=true
 
             # Task configuration
             - STEPHEYBOT__TASKS__SYNC_INTERVAL=3600
@@ -606,81 +726,98 @@ volumes:
         driver_opts:
             type: none
             o: bind
-            device: ${SSD_APP_PATH}/nextcloud_app
+            device: /mnt/hdd/nextcloud_data
     db_data:
         driver: local
         driver_opts:
             type: none
             o: bind
-            device: ${SSD_APP_PATH}/nextcloud_db
+            device: /mnt/nvme/db-cache/nextcloud_db
     redis_data:
         driver: local
         driver_opts:
             type: none
             o: bind
-            device: ${SSD_APP_PATH}/nextcloud_redis
+            device: /mnt/nvme/db-cache/nextcloud_redis
     elasticsearch_data:
         driver: local
         driver_opts:
             type: none
             o: bind
-            device: ${SSD_APP_PATH}/nextcloud_elastic
+            device: /mnt/nvme/db-cache/nextcloud_elastic
     onlyoffice_data:
         driver: local
         driver_opts:
             type: none
             o: bind
-            device: ${SSD_APP_PATH}/nextcloud_onlyoffice_data
+            device: /mnt/nvme/hot/onlyoffice_data
     onlyoffice_log:
         driver: local
         driver_opts:
             type: none
             o: bind
-            device: ${SSD_APP_PATH}/nextcloud_onlyoffice_log
-    # StepheyBot Music volumes
+            device: /mnt/nvme/hot/onlyoffice_log
     navidrome_data:
         driver: local
         driver_opts:
             type: none
             o: bind
-            device: ${SSD_APP_PATH}/navidrome
+            device: /mnt/nvme/db-cache/navidrome
     lidarr_data:
         driver: local
         driver_opts:
             type: none
             o: bind
-            device: ${SSD_APP_PATH}/lidarr
+            device: /mnt/nvme/apps/lidarr
 
     stepheybot_music_data:
         driver: local
         driver_opts:
             type: none
             o: bind
-            device: ${SSD_APP_PATH}/music-recommender/data
+            device: /mnt/nvme/apps/music-recommender/data
     stepheybot_music_cache:
         driver: local
         driver_opts:
             type: none
             o: bind
-            device: ${SSD_APP_PATH}/music-recommender/cache
+            device: /mnt/nvme/stream/music_cache
     affine_db_data:
         driver: local
         driver_opts:
             type: none
             o: bind
-            device: ${SSD_APP_PATH}/affine/db
+            device: /mnt/nvme/db-cache/affine_db
     affine_data:
         driver: local
         driver_opts:
             type: none
             o: bind
-            device: ${SSD_APP_PATH}/affine/data
+            device: /mnt/nvme/apps/affine/data
     affine_config:
         driver: local
         driver_opts:
             type: none
             o: bind
-            device: ${SSD_APP_PATH}/affine/config
+            device: /mnt/nvme/apps/affine/config
+    qbittorrent_data:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: /mnt/nvme/apps/qbittorrent
+    jackett_data:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: /mnt/nvme/apps/jackett
+    gluetun_data:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: /mnt/nvme/apps/gluetun
 
 networks:
     proxy:
