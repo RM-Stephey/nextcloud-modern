@@ -431,9 +431,9 @@ services:
             - gluetun_data:/gluetun
             # No additional config files needed for Mullvad - all config via environment variables
         ports:
-            - "8080:8080" # qBittorrent WebUI
-            - "6882:6882" # qBittorrent torrenting
-            - "6882:6882/udp"
+            - "9092:9091" # Transmission WebUI
+            - "51413:51413" # Transmission torrenting
+            - "51413:51413/udp"
         networks:
             - nextcloud_net
             - proxy
@@ -452,10 +452,10 @@ services:
             retries: 3
             start_period: 30s
 
-    # qBittorrent download client (routes through VPN)
-    qbittorrent:
-        image: linuxserver/qbittorrent:latest
-        container_name: stepheybot_music_qbittorrent
+    # Transmission download client (routes through VPN)
+    transmission:
+        image: linuxserver/transmission:latest
+        container_name: stepheybot_music_transmission
         restart: unless-stopped
         network_mode: "service:gluetun" # Route through VPN
         depends_on:
@@ -464,17 +464,13 @@ services:
             - PUID=1000
             - PGID=1000
             - TZ=UTC
-            - WEBUI_PORT=8080
-            - TORRENTING_PORT=6882
+            - USER=admin
+            - PASS=adminadmin
         volumes:
-            - qbittorrent_data:/config
+            - transmission_data:/config
             - /mnt/nvme/upload:/downloads
-            - /mnt/nvme/upload:/incomplete
-        healthcheck:
-            test: ["CMD", "curl", "-f", "http://localhost:8080"]
-            interval: 30s
-            timeout: 10s
-            retries: 3
+            - /mnt/nvme/upload:/hot_downloads
+            - /mnt/nvme/upload:/watch
 
     # Jackett indexer for music torrents
     jackett:
@@ -538,6 +534,14 @@ services:
             # Lidarr integration
             - STEPHEYBOT__LIDARR__URL=http://lidarr:8686
             - STEPHEYBOT__LIDARR__API_KEY=${STEPHEYBOT__LIDARR__API_KEY}
+
+            # Transmission integration
+            - STEPHEYBOT__TRANSMISSION__URL=http://stepheybot_music_vpn:9091
+            - STEPHEYBOT__TRANSMISSION__USERNAME=admin
+            - STEPHEYBOT__TRANSMISSION__PASSWORD=adminadmin
+
+            # Logging configuration
+            - RUST_LOG=debug
 
             # MusicBrainz configuration
             - STEPHEYBOT__MUSICBRAINZ__USER_AGENT=StepheyBot-Music/1.0 (https://stepheybot.dev)
@@ -800,12 +804,12 @@ volumes:
             type: none
             o: bind
             device: /mnt/nvme/apps/affine/config
-    qbittorrent_data:
+    transmission_data:
         driver: local
         driver_opts:
             type: none
             o: bind
-            device: /mnt/nvme/apps/qbittorrent
+            device: /mnt/nvme/apps/transmission
     jackett_data:
         driver: local
         driver_opts:
