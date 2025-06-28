@@ -1,0 +1,56 @@
+directory: /mnt/nvme/hot/stepheybot-music-org/organized
+library: /mnt/nvme/hot/stepheybot-music-org/library.db
+
+import:
+    write: yes
+    copy: yes
+    move: no
+    resume: yes
+    incremental: no
+    quiet_fallback: skip
+    timid: no
+    log: /mnt/nvme/hot/stepheybot-music-org/import.log
+    duplicate_action: skip
+    bell: no
+
+paths:
+    default: $albumartist/$album%aunique{}/$track. $title
+    singleton: _Singles/$artist/$title
+    comp: _Compilations/$album%aunique{}/$track. $title
+    albumtype:soundtrack: _Soundtracks/$album/$track. $title
+
+replace:
+    '[\\/]': _
+    '^\.': _
+    '[\x00-\x1f]': _
+    '[<>:"\\?\\*\\|]': _
+    '\.$': _
+    '\s+$': ""
+    '\s+': " "
+    "&": and
+
+plugins: fetchart embedart info
+
+fetchart:
+    auto: yes
+    cautious: true
+    cover_names: cover folder album front art artwork
+    sources: filesystem coverart
+    store_source: yes
+
+embedart:
+    auto: yes
+    ifempty: no
+    maxwidth: 800
+    remove_art_file: no
+
+match:
+    strong_rec_thresh: 0.10
+    medium_rec_thresh: 0.25
+
+ui:
+    color: yes
+    length_diff_thresh: 10.0
+
+log: /mnt/nvme/hot/stepheybot-music-org/beets.log
+verbose: 1

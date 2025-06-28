@@ -1,0 +1,62 @@
+directory: /tmp/music-debug-test/organized
+library: /tmp/debug.db
+
+import:
+    write: yes
+    copy: yes
+    move: no
+    resume: yes
+    incremental: no
+    quiet_fallback: skip
+    timid: no
+    log: /tmp/beets-debug-import.log
+    duplicate_action: skip
+    bell: no
+
+# Path formatting - StepheyBot structure
+paths:
+    default: $albumartist/$album%aunique{}/$track - $title
+    singleton: _Singles/$artist/$title
+    comp: _Compilations/$album%aunique{}/$track - $title
+    albumtype:soundtrack: _Soundtracks/$album/$track - $title
+
+# Character replacement
+replace:
+    '[\\/]': _
+    '^\.': _
+    '[\x00-\x1f]': _
+    '[<>:"\\?\\*\\|]': _
+    '\.$': _
+    '\s+$': ''
+    '\s+': ' '
+
+# Essential plugins for testing
+plugins: fetchart embedart info
+
+# Artwork settings
+fetchart:
+    auto: yes
+    cautious: true
+    cover_names: cover folder album front art
+    sources: filesystem coverart
+    store_source: yes
+
+embedart:
+    auto: yes
+    ifempty: no
+    maxwidth: 800
+    remove_art_file: no
+
+# Match settings
+match:
+    strong_rec_thresh: 0.04
+    medium_rec_thresh: 0.25
+
+# UI settings
+ui:
+    color: yes
+    length_diff_thresh: 10.0
+
+# Logging
+log: /tmp/debug-beets.log
+verbose: 2
